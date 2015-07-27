@@ -1,3 +1,6 @@
+#sublime files
+*.sublime*
+
 # Object files
 *.o
 *.ko
