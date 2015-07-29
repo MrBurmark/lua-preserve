@@ -141,44 +141,64 @@ static void pbuf_addlen(p_Buffer *buf, size_t len)
 
 
 
-static int writer (lua_State *L, const void *b, size_t size, void *B) {
+static int vectorwriter (lua_State *L, const void *b, size_t type_size, size_t length, void *B) {
   (void)L;
   const char * out = (const char *)b;
-  uint16_t tmp16 = 0;
-  uint32_t tmp32 = 0;
-  uint64_t tmp64 = 0;
+  
   if (p_endianness != BIGENDIAN)
   {
-    switch (size)
+    switch (type_size)
       {
+        case 1:
+          luaL_addlstring((luaL_Buffer *) B, b, length);
+          break;
         case 2:
-            tmp16 = ( (( (*((uint16_t*)b)) & 0xff00) >> 8)
-                    | (( (*((uint16_t*)b)) & 0x00ff) << 8));
-            out = (const char *)&tmp16;
-            break;
+          uint16_t tmp16 = 0;
+          const uint16_t *in = (const uint16_t*)b;
+          for (;length > 0; length--,in++)
+          {
+            tmp16 = ( (( (*in) & 0xff00) >> 8)
+                    | (( (*in) & 0x00ff) << 8));
+            luaL_addlstring((luaL_Buffer *) B, &tmp16, 2);
+          }
+          break;
         case 4:
-            tmp32 = ( (( (*((uint32_t*)b)) & 0xff000000) >> 24)
-                    | (( (*((uint32_t*)b)) & 0x00ff0000) >> 8 )
-                    | (( (*((uint32_t*)b)) & 0x0000ff00) << 8 )
-                    | (( (*((uint32_t*)b)) & 0x000000ff) << 24));
-            out = (const char *)&tmp32;
-            break;
+          uint32_t tmp32 = 0;
+          const uint32_t *in = (const uint32_t*)b;
+          for (;length > 0; length--,in++)
+          {
+            tmp32 = ( (( (*in) & 0xff000000) >> 24)
+                    | (( (*in) & 0x00ff0000) >> 8 )
+                    | (( (*in) & 0x0000ff00) << 8 )
+                    | (( (*in) & 0x000000ff) << 24));
+            luaL_addlstring((luaL_Buffer *) B, &tmp32, 4);
+          }
+          break;
         case 8:
-            tmp64 = ( (( (*((uint64_t*)b)) & 0xff00000000000000) >> 56)
-                    | (( (*((uint64_t*)b)) & 0x00ff000000000000) >> 40)
-                    | (( (*((uint64_t*)b)) & 0x0000ff0000000000) >> 24)
-                    | (( (*((uint64_t*)b)) & 0x000000ff00000000) >> 8 )
-                    | (( (*((uint64_t*)b)) & 0x00000000ff000000) << 8 )
-                    | (( (*((uint64_t*)b)) & 0x0000000000ff0000) << 24)
-                    | (( (*((uint64_t*)b)) & 0x000000000000ff00) << 40)
-                    | (( (*((uint64_t*)b)) & 0x00000000000000ff) << 56));
-            out = (const char *)&tmp64;
-            break;
+          uint64_t tmp64 = 0;
+          const uint64_t *in = (const uint64_t*)b;
+          for (;length > 0; length--,in++)
+          {
+            tmp64 = ( (( (*in) & 0xff00000000000000) >> 56)
+                    | (( (*in) & 0x00ff000000000000) >> 40)
+                    | (( (*in) & 0x0000ff0000000000) >> 24)
+                    | (( (*in) & 0x000000ff00000000) >> 8 )
+                    | (( (*in) & 0x00000000ff000000) << 8 )
+                    | (( (*in) & 0x0000000000ff0000) << 24)
+                    | (( (*in) & 0x000000000000ff00) << 40)
+                    | (( (*in) & 0x00000000000000ff) << 56));
+            luaL_addlstring((luaL_Buffer *) B, &tmp64, 8);
+          }
+          break;
         default:
-            break;
+          luaL_error(L, "Unknown type_size encountered");
+          break;
       }
   }
-  luaL_addlstring((luaL_Buffer *) B, out, size);
+  else
+  {
+    luaL_addlstring((luaL_Buffer *) B, b, type_size * length);
+  }
   return 0;
 }
 
