@@ -43,35 +43,60 @@ static l_noret error(LoadState *S, const char *why) {
 }
 
 /* code added to flip endianess on load */
-#define FLIP_ENDIANESS(i) \
-  switch (sizeof(i))\
+#define FLIP_ENDIANESS(i, t) \
+  switch (sizeof(t))\
   {\
     case 1:\
-            break;\
+          break;\
     case 2:\
-            (i) = ( (( ((uint16_t)(i)) & 0xff00) >> 8)\
-                  | (( ((uint16_t)(i)) & 0x00ff) << 8));\
+          {\
+            union {\
+              uint16_t u16;\
+              t v;\
+            } u;\
+            u.v = (i);\
+            u.u16 = ( ((u.u16 & 0xff00) >> 8)\
+                    | ((u.u16 & 0x00ff) << 8));\
+            (i) = u.v;\
             break;\
+          }\
     case 4:\
-            (i) = ( (( ((uint32_t)(i)) & 0xff000000) >> 24)\
-                  | (( ((uint32_t)(i)) & 0x00ff0000) >> 8 )\
-                  | (( ((uint32_t)(i)) & 0x0000ff00) << 8 )\
-                  | (( ((uint32_t)(i)) & 0x000000ff) << 24));\
+          {\
+            union {\
+              uint32_t u32;\
+              t v;\
+            } u;\
+            u.v = (i);\
+            u.u32 = ( ((u.u32 & 0xff000000) >> 24)\
+                    | ((u.u32 & 0x00ff0000) >> 8 )\
+                    | ((u.u32 & 0x0000ff00) << 8 )\
+                    | ((u.u32 & 0x000000ff) << 24));\
+            (i) = u.v;\
             break;\
+          }\
     case 8:\
-            (i) = ( (( ((uint64_t)(i)) & 0xff00000000000000) >> 56)\
-                  | (( ((uint64_t)(i)) & 0x00ff000000000000) >> 40)\
-                  | (( ((uint64_t)(i)) & 0x0000ff0000000000) >> 24)\
-                  | (( ((uint64_t)(i)) & 0x000000ff00000000) >> 8 )\
-                  | (( ((uint64_t)(i)) & 0x00000000ff000000) << 8 )\
-                  | (( ((uint64_t)(i)) & 0x0000000000ff0000) << 24)\
-                  | (( ((uint64_t)(i)) & 0x000000000000ff00) << 40)\
-                  | (( ((uint64_t)(i)) & 0x00000000000000ff) << 56));\
+          {\
+            union {\
+              uint64_t u64;\
+              t v;\
+            } u;\
+            u.v = (i);\
+            u.u64 = ( ((u.u64 & 0xff00000000000000) >> 56)\
+                    | ((u.u64 & 0x00ff000000000000) >> 40)\
+                    | ((u.u64 & 0x0000ff0000000000) >> 24)\
+                    | ((u.u64 & 0x000000ff00000000) >> 8 )\
+                    | ((u.u64 & 0x00000000ff000000) << 8 )\
+                    | ((u.u64 & 0x0000000000ff0000) << 24)\
+                    | ((u.u64 & 0x000000000000ff00) << 40)\
+                    | ((u.u64 & 0x00000000000000ff) << 56));\
+            (i) = u.v;\
             break;\
+          }\
     default:\
-            error(S, "Unknown number size");\
-            break;\
+          error(S, "Unknown number size");\
+          break;\
   }
+
 
 static int fix_endianess = 0;
 
@@ -79,11 +104,11 @@ static int fix_endianess = 0;
 ** All high-level loads go through LoadVector; you can change it to
 ** adapt to the endianness of the input
 */
-#define LoadVector(S,b,n)	LoadBlock(S,b,n*sizeof((b)[0]));\
+#define LoadVector(S,b,n,t)	LoadBlock(S,b,n*sizeof((b)[0]));\
               if (fix_endianess)\
               {/* fix b */\
                 for(size_t i = 0; i < (size_t)n; ++i) {\
-                  FLIP_ENDIANESS((b)[i]);\
+                  FLIP_ENDIANESS((b)[i],t);\
                 }\
               }\
 
@@ -93,33 +118,33 @@ static void LoadBlock (LoadState *S, void *b, size_t size) {
 }
 
 
-#define LoadVar(S,x)		LoadVector(S,&x,1)
+#define LoadVar(S,x,t)		LoadVector(S,&x,1,t)
 
 
 static lu_byte LoadByte (LoadState *S) {
   lu_byte x;
-  LoadVar(S, x);
+  LoadVar(S, x, lu_byte);
   return x;
 }
 
 
 static int LoadInt (LoadState *S) {
   int x;
-  LoadVar(S, x);
+  LoadVar(S, x, int);
   return x;
 }
 
 
 static lua_Number LoadNumber (LoadState *S) {
   lua_Number x;
-  LoadVar(S, x);
+  LoadVar(S, x, lua_Number);
   return x;
 }
 
 
 static lua_Integer LoadInteger (LoadState *S) {
   lua_Integer x;
-  LoadVar(S, x);
+  LoadVar(S, x, lua_Integer);
   return x;
 }
 
@@ -127,12 +152,12 @@ static lua_Integer LoadInteger (LoadState *S) {
 static TString *LoadString (LoadState *S) {
   size_t size = LoadByte(S);
   if (size == 0xFF)
-    LoadVar(S, size);
+    LoadVar(S, size, size_t);
   if (size == 0)
     return NULL;
   else {
     char *s = luaZ_openspace(S->L, S->b, --size);
-    LoadVector(S, s, size);
+    LoadVector(S, s, size, char);
     return luaS_newlstr(S->L, s, size);
   }
 }
@@ -142,7 +167,7 @@ static void LoadCode (LoadState *S, Proto *f) {
   int n = LoadInt(S);
   f->code = luaM_newvector(S->L, n, Instruction);
   f->sizecode = n;
-  LoadVector(S, f->code, n);
+  LoadVector(S, f->code, n, Instruction);
 }
 
 
@@ -216,7 +241,7 @@ static void LoadDebug (LoadState *S, Proto *f) {
   n = LoadInt(S);
   f->lineinfo = luaM_newvector(S->L, n, int);
   f->sizelineinfo = n;
-  LoadVector(S, f->lineinfo, n);
+  LoadVector(S, f->lineinfo, n, int);
   n = LoadInt(S);
   f->locvars = luaM_newvector(S->L, n, LocVar);
   f->sizelocvars = n;
@@ -253,7 +278,7 @@ static void LoadFunction (LoadState *S, Proto *f, TString *psource) {
 static void checkliteral (LoadState *S, const char *s, const char *msg) {
   char buff[sizeof(LUA_SIGNATURE) + sizeof(LUAC_DATA)]; /* larger than both */
   size_t len = strlen(s);
-  LoadVector(S, buff, len);
+  LoadVector(S, buff, len, char);
   if (memcmp(s, buff, len) != 0)
     error(S, msg);
 }
@@ -282,7 +307,7 @@ static void checkHeader (LoadState *S) {
   lua_Integer i = LoadInteger(S);
   if (i != LUAC_INT) {
     fix_endianess = !fix_endianess;
-    FLIP_ENDIANESS(i);
+    FLIP_ENDIANESS(i, lua_Integer);
     if (i != LUAC_INT) {
       error(S, "endianness mismatch in");
     }
