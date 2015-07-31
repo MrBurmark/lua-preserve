@@ -103,10 +103,10 @@ static int fix_endianess = 0;
         }
 
 /* fix endianness if required */
-#define FIX_ENDIANESS(i, t, force) SWAP_ENDIANESS(i, t, 0)
+#define FIX_ENDIANESS(i, t) SWAP_ENDIANESS(i, t, 0)
 
 /* always flip endianness */
-#define FLIP_ENDIANESS(i, t, force) SWAP_ENDIANESS(i, t, 1)
+#define FLIP_ENDIANESS(i, t) SWAP_ENDIANESS(i, t, 1)
 
 
 /*
