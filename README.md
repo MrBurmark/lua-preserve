@@ -3,6 +3,7 @@
 Influenced by lua-marshal and Data Dumper, lua-preserve is a lua state preservation program meant for embedded lua programs.  
 Lua-preserve redefines some basic functions such as require to intercept libraries and reinitialize them, it can also then restore c functions from those libraries, and other functions registered through the lua-preserve c-interface.
 Lua-preserve generates a lua string containing everything needed to restore the current lua state, and passing that string to restore will restore the lua state.
+Use the included lundump.c to replace lundump.c in lua-5.3.1/src and rebuild lua for endianness independent function loading
 
 Caveats:
 	Lightuserdata is not preserved.

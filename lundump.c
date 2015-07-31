@@ -42,75 +42,84 @@ static l_noret error(LoadState *S, const char *why) {
   luaD_throw(S->L, LUA_ERRSYNTAX);
 }
 
-/* code added to flip endianess on load */
-#define FLIP_ENDIANESS(i, t) \
-  switch (sizeof(t))\
-  {\
-    case 1:\
-          break;\
-    case 2:\
-          {\
-            union {\
-              uint16_t u16;\
-              t v;\
-            } u;\
-            u.v = (i);\
-            u.u16 = ( ((u.u16 & 0xff00) >> 8)\
-                    | ((u.u16 & 0x00ff) << 8));\
-            (i) = u.v;\
-            break;\
-          }\
-    case 4:\
-          {\
-            union {\
-              uint32_t u32;\
-              t v;\
-            } u;\
-            u.v = (i);\
-            u.u32 = ( ((u.u32 & 0xff000000) >> 24)\
-                    | ((u.u32 & 0x00ff0000) >> 8 )\
-                    | ((u.u32 & 0x0000ff00) << 8 )\
-                    | ((u.u32 & 0x000000ff) << 24));\
-            (i) = u.v;\
-            break;\
-          }\
-    case 8:\
-          {\
-            union {\
-              uint64_t u64;\
-              t v;\
-            } u;\
-            u.v = (i);\
-            u.u64 = ( ((u.u64 & 0xff00000000000000) >> 56)\
-                    | ((u.u64 & 0x00ff000000000000) >> 40)\
-                    | ((u.u64 & 0x0000ff0000000000) >> 24)\
-                    | ((u.u64 & 0x000000ff00000000) >> 8 )\
-                    | ((u.u64 & 0x00000000ff000000) << 8 )\
-                    | ((u.u64 & 0x0000000000ff0000) << 24)\
-                    | ((u.u64 & 0x000000000000ff00) << 40)\
-                    | ((u.u64 & 0x00000000000000ff) << 56));\
-            (i) = u.v;\
-            break;\
-          }\
-    default:\
-          error(S, "Unknown number size");\
-          break;\
-  }
-
-
 static int fix_endianess = 0;
+
+/* swap endianess of i with type t, force always swaps */
+/* use of ternary operator suggests to compiler to use conditional move instructions */
+#define SWAP_ENDIANESS(i, t, force) \
+        {\
+          switch (sizeof(t))\
+          {\
+            case 1:\
+              break;\
+            case 2:\
+              {\
+                union {\
+                  uint16_t u16;\
+                  t v;\
+                } u;\
+                u.v = (i);\
+                u.u16 = ( ((u.u16 & 0xff00) >> 8)\
+                        | ((u.u16 & 0x00ff) << 8));\
+                (i) = (fix_endianess || force) ? u.v : (i);\
+                break;\
+              }\
+            case 4:\
+              {\
+                union {\
+                  uint32_t u32;\
+                  t v;\
+                } u;\
+                u.v = (i);\
+                u.u32 = ( ((u.u32 & 0xff000000) >> 24)\
+                        | ((u.u32 & 0x00ff0000) >> 8 )\
+                        | ((u.u32 & 0x0000ff00) << 8 )\
+                        | ((u.u32 & 0x000000ff) << 24));\
+                (i) = (fix_endianess || force) ? u.v : (i);\
+                break;\
+              }\
+            case 8:\
+              {\
+                union {\
+                  uint64_t u64;\
+                  t v;\
+                } u;\
+                u.v = (i);\
+                u.u64 = ( ((u.u64 & 0xff00000000000000) >> 56)\
+                        | ((u.u64 & 0x00ff000000000000) >> 40)\
+                        | ((u.u64 & 0x0000ff0000000000) >> 24)\
+                        | ((u.u64 & 0x000000ff00000000) >> 8 )\
+                        | ((u.u64 & 0x00000000ff000000) << 8 )\
+                        | ((u.u64 & 0x0000000000ff0000) << 24)\
+                        | ((u.u64 & 0x000000000000ff00) << 40)\
+                        | ((u.u64 & 0x00000000000000ff) << 56));\
+                (i) = (fix_endianess || force) ? u.v : (i);\
+                break;\
+              }\
+            default:\
+              error(S, "Unknown number size");\
+            break;\
+          }\
+        }
+
+/* fix endianness if required */
+#define FIX_ENDIANESS(i, t, force) SWAP_ENDIANESS(i, t, 0)
+
+/* always flip endianness */
+#define FLIP_ENDIANESS(i, t, force) SWAP_ENDIANESS(i, t, 1)
+
 
 /*
 ** All high-level loads go through LoadVector; you can change it to
 ** adapt to the endianness of the input
 */
-#define LoadVector(S,b,n,t)	LoadBlock(S,b,n*sizeof((b)[0]));\
-              if (fix_endianess)\
-              {/* fix b */\
-                for(size_t i = 0; i < (size_t)n; ++i) {\
-                  FLIP_ENDIANESS((b)[i],t);\
-                }\
-              }\
+#define LoadVector(S,b,n,t)	\
+        {\
+          LoadBlock(S,b,n*sizeof((b)[0]));\
+          for(size_t i = 0; i < (size_t)n; ++i) {\
+            FIX_ENDIANESS((b)[i],t);\
+          }\
+        }
 
 static void LoadBlock (LoadState *S, void *b, size_t size) {
   if (luaZ_read(S->Z, b, size) != 0)
